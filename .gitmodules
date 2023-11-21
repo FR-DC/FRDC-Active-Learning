@@ -1,0 +1,6 @@
+[submodule "MixMatch-PyTorch-CIFAR10"]
+	path = MixMatch-PyTorch-CIFAR10
+	url = https://github.com/FR-DC/MixMatch-PyTorch-CIFAR10.git
+[submodule "FRDC-ML"]
+	path = FRDC-ML
+	url = https://github.com/FR-DC/FRDC-ML.git
