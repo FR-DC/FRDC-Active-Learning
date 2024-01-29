@@ -201,6 +201,7 @@ def confusion_mat(test_dl: DataLoader,
                   device: str):
     y_trues, y_preds = [], []
     logits = []
+    model.eval()
     with torch.no_grad():
         for x, y in tqdm(test_dl):
             # TODO: Pretty hacky but this is for the train loader.
