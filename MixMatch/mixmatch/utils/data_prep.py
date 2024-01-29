@@ -1,14 +1,46 @@
 from collections import defaultdict
-from typing import List
+from typing import List, Callable, Dict, Tuple
 from pathlib import Path
 import os
 import numpy as np
+
+
+def _fn_per_band(ar: np.ndarray, fn: Callable[[np.ndarray], np.ndarray]):
+    """Runs an operation for each band in an NDArray."""
+    ar = ar.copy()
+    ar_bands = []
+    for band in range(ar.shape[-1]):
+        ar_band = ar[:, :, band]
+        ar_band = fn(ar_band)
+        ar_bands.append(ar_band)
+
+    return np.stack(ar_bands, axis=-1)
+
+
+def scale_0_1_per_band(
+    ar: np.ndarray, epsilon: float | bool = False
+) -> np.ndarray:
+    """Scales an NDArray from 0 to 1 for each band independently
+
+    Args:
+        ar: NDArray of shape (H, W, C), where C is the number of bands.
+        epsilon: If True, then we add a small epsilon to the denominator to
+            avoid division by zero. If False, then we do not add epsilon.
+            If a float, then we add that float as epsilon.
+    """
+    epsilon = 1e-7 if epsilon is True else epsilon
+
+    return _fn_per_band(
+        ar,
+        lambda x: (x - np.nanmin(x)) / (np.nanmax(x) - np.nanmin(x) + epsilon),
+    )
+
 
 def process_segments_labels(segments: List[np.ndarray], 
                             labels: List[str],
                             home_path: Path | str,
                             grid_sz: int,
-                            mode: str = "all" | "rgb"):
+                            mode: str):
     # counter to find out how many images of each species there are
     label_dict = {}
     for label in labels:
@@ -20,6 +52,7 @@ def process_segments_labels(segments: List[np.ndarray],
             continue
         if mode == "rgb":
             segment = segment[..., [2, 1, 0]]
+        segment = scale_0_1_per_band(segment)
         segments_processed.append((segment, segment.shape))
         labels_processed.append(labels[i])
 
@@ -45,7 +78,7 @@ def process_segments_labels(segments: List[np.ndarray],
 
 
 def reconstruct_image_from_cells(test_dataset_dir: str,
-                                 size: int = 48):
+                                 size: int = 48) -> Dict[str, Dict[int, np.ndarray]]:
     dims, cells = defaultdict(lambda: (-1, -1)), defaultdict(lambda: dict())
     spec_images = {}
     for species in os.listdir(test_dataset_dir):
@@ -67,3 +100,29 @@ def reconstruct_image_from_cells(test_dataset_dir: str,
             imgs[idx] = img_arr
         spec_images[species] = imgs
     return spec_images
+
+def load_segments_labels(ds_path: Path | str) -> Tuple[List[np.ndarray], 
+                                                       List[np.ndarray]]:
+    segments, labels = [], []
+    for species in os.listdir(ds_path):
+        segments.append(np.load(os.path.join(ds_path, species)))
+        labels.append(species.split("_")[0])
+    return segments, labels
+
+def main():
+    base_dir = "../../"
+    train_segments, train_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20201218"))
+    test_segments, test_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20210510_43m"))
+    process_segments_labels(segments=train_segments,
+                            labels=train_labels,
+                            home_path=os.path.join(base_dir, "chestnut_20201218_48"),
+                            grid_sz=48,
+                            mode="all")
+    process_segments_labels(segments=test_segments,
+                        labels=test_labels,
+                        home_path=os.path.join(base_dir, "chestnut_20210510_43m_48"),
+                        grid_sz=48,
+                        mode="all")
+    
+if __name__ == "__main__":
+    main()

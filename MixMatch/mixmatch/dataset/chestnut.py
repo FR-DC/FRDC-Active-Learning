@@ -263,6 +263,8 @@ def get_dataloaders(
             # idxs=test_ixes,
             stats=(train_lbl_ds.mean, train_lbl_ds.std),
         )
+        print(f"Mean: {train_lbl_ds.mean}")
+        print(f"Std: {train_lbl_ds.std}")
 
         test_dl = DataLoader(test_ds, shuffle=False, **dl_args)
     else:

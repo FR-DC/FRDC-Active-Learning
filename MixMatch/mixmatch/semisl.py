@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from dataset.chestnut import get_dataloaders
 import models.wideresnet as models
 from utils.ema import WeightEMA
-from utils.eval import validate, train, confusion_mat
+from utils.eval import validate, train
 from utils.loss import SemiLoss
 from utils.checkpoint import mkdir_p, save_checkpoint
 from tensorboardX import SummaryWriter
@@ -21,9 +21,9 @@ from tensorboardX import SummaryWriter
 
 def main(
     *,
-    epochs: int = 20,
+    epochs: int = 50,
     batch_size: int = 64,
-    lr: float = 0.003,
+    lr: float = 0.001,
     train_iteration: int = 256,
     ema_decay: float = 0.999,
     lambda_u: float = 75,
@@ -56,10 +56,10 @@ def main(
         test_loader,
         classes,
     ) = get_dataloaders(
-        train_dataset_dir="../../chestnut_20201218_filtered_48",
-        test_dataset_dir="../../chestnut_20210510_43m_filtered_48",
-        train_lbl_size=0.1,
-        train_unl_size=0.8,
+        train_dataset_dir="../../chestnut_20201218_48",
+        test_dataset_dir="../../chestnut_20210510_43m_48",
+        train_lbl_size=0.2,
+        train_unl_size=0.6,
         batch_size=batch_size,
         seed=seed,
     )
