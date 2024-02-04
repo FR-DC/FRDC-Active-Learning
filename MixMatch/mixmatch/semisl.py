@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from dataset.chestnut import get_dataloaders
 import models.wideresnet as models
 from utils.ema import WeightEMA
-from utils.eval import validate, train
+from utils.eval import validate, train, confusion_mat
 from utils.loss import SemiLoss
 from utils.checkpoint import mkdir_p, save_checkpoint
 from tensorboardX import SummaryWriter
@@ -159,10 +159,10 @@ def main(
 
     writer.close()
 
-    # resume = os.path.join(out, "model_best.pth.tar")
-    # checkpoint = torch.load(resume)
-    # model.load_state_dict(checkpoint['state_dict'])
-    # confusion_mat(test_dl=test_loader, out=out, species_map=classes, model=model, device=device)
+    resume = os.path.join(out, "model_best.pth.tar")
+    checkpoint = torch.load(resume)
+    model.load_state_dict(checkpoint['state_dict'])
+    confusion_mat(test_dl=test_loader, out=out, species_map=classes, model=model, device=device)
 
     print("Best acc:")
     print(best_acc)

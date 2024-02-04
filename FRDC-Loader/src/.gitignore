@@ -1,0 +1,3 @@
+label-studio/
+!label-studio/docker-compose.yml
+!label-studio/dump.sh
