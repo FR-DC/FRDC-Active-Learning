@@ -13,25 +13,24 @@ from torch.utils.data import DataLoader
 from dataset.chestnut import get_dataloaders
 import models.wideresnet as models
 from utils.ema import WeightEMA
-from utils.eval import validate, train
-from utils.loss import SemiLoss
+from utils.eval import validate, train_sl, confusion_mat
 from utils.checkpoint import mkdir_p, save_checkpoint
 from tensorboardX import SummaryWriter
 
 
 def main(
     *,
-    epochs: int = 20,
-    batch_size: int = 64,
-    lr: float = 0.001,
+    epochs: int = 100,
+    batch_size: int = 128,
+    lr: float = 0.0001,
     train_iteration: int = 256,
     ema_decay: float = 0.999,
-    lambda_u: float = 75,
     alpha: float = 0.75,
-    t: float = 0.5,
     device: str = "cuda",
     seed: int = 42,
-    out: Path | str = "../../Chestnut_logs",
+    bestname = "model_best_48",
+    saved_model_path: Path | str = None,
+    out: Path | str = "../../Chestnut_logs/48_sl_balanced",
 ):
     if not os.path.isdir(out):
         mkdir_p(out)
@@ -51,15 +50,15 @@ def main(
 
     (
         train_lbl_dl,
-        # train_unl_dl,
+        _,
         val_loader,
         test_loader,
         classes,
     ) = get_dataloaders(
-        train_dataset_dir="../../chestnut_20201218_rgb_filtered_48",
-        test_dataset_dir="../../chestnut_20210510_43m_rgb_filtered_48",
+        train_dataset_dir="../../chestnut_20201218_48_remote",
+        test_dataset_dir="../../chestnut_20210510_43m_48_remote",
         train_lbl_size=0.2,
-        train_unl_size=0.0,
+        train_unl_size=0.6,
         batch_size=batch_size,
         seed=seed,
     )
@@ -68,6 +67,10 @@ def main(
     print("==> creating WRN-28-2")
 
     model = models.WideResNet(num_classes=9).to(device)
+    if saved_model_path:
+        checkpoint = torch.load(saved_model_path)
+        model.load_state_dict(checkpoint['ema_state_dict'])
+    
     ema_model = deepcopy(model).to(device)
     for param in ema_model.parameters():
         param.detach_()
@@ -78,7 +81,7 @@ def main(
         % (sum(p.numel() for p in model.parameters()) / 1000000.0)
     )
 
-    train_loss_fn = SemiLoss()
+    train_loss_fn = nn.CrossEntropyLoss()
     val_loss_fn = nn.CrossEntropyLoss()
     train_optim = optim.Adam(model.parameters(), lr=lr)
 
@@ -91,20 +94,15 @@ def main(
     for epoch in range(epochs):
         print("\nEpoch: [%d | %d] LR: %f" % (epoch + 1, epochs, lr))
 
-        train_loss, train_lbl_loss, train_unl_loss = train(
+        train_loss = train_sl(
             train_lbl_dl=train_lbl_dl,
-            # train_unl_dl=train_unl_dl,
             model=model,
             optim=train_optim,
             ema_optim=ema_optim,
             loss_fn=train_loss_fn,
-            epoch=epoch,
             device="cuda",
             train_iters=train_iteration,
-            lambda_u=lambda_u,
             mix_beta_alpha=alpha,
-            epochs=epochs,
-            sharpen_temp=t,
         )
 
         def val_ema(dl: DataLoader):
@@ -143,6 +141,7 @@ def main(
                 'acc': val_acc,
                 'best_acc': best_acc,
                 'optimizer' : train_optim.state_dict()}, 
+                bestname=bestname,
                 is_best=is_best,
                 checkpoint=out)
 
@@ -153,11 +152,16 @@ def main(
             f"Best Acc: {best_acc:.3f} | "
             f"Mean Acc: {np.mean(test_accs[-20:]):.3f} | "
             f"LR: {lr:.5f} | "
-            f"Train Loss X: {train_lbl_loss:.3f} | "
-            f"Train Loss U: {train_unl_loss:.3f} "
+            # f"Train Loss X: {train_lbl_loss:.3f} | "
+            # f"Train Loss U: {train_unl_loss:.3f} "
         )
 
     writer.close()
+
+    resume = os.path.join(out, bestname)
+    checkpoint = torch.load(resume)
+    model.load_state_dict(checkpoint['ema_state_dict'])
+    confusion_mat(test_dl=test_loader, out=out, species_map=classes, model=model, device=device)
 
     print("Best acc:")
     print(best_acc)

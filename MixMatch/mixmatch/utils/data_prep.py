@@ -159,7 +159,7 @@ def _counts(imgs: Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]],
 
 
 def plot_visuals(imgs: Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]], 
-                 species: str, index: int, cell_size: int = 48):
+                 classes: List[str], species: str, index: int, cell_size: int = 48):
 
     img, mask = imgs[species][index]
     mask = mask.squeeze()
@@ -183,24 +183,24 @@ def plot_visuals(imgs: Dict[str, Dict[int, Tuple[np.ndarray, np.ndarray]]],
     # put those patched as legend-handles into the legend
     plot = ax[1].imshow(mask, cmap=cmap, interpolation='bilinear', vmax=8, vmin=0, alpha=0.7)
     cbar = fig.colorbar(plot, location="bottom")
-    cbar.ax.set_xticklabels(test_ds.species_map, rotation = 45)  # vertically oriented colorbar
+    cbar.ax.set_xticklabels(classes, rotation = 45)  # vertically oriented colorbar
     fig.tight_layout()
 
 
 def main():
     base_dir = "../../../"
-    train_segments, train_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20201218"))
-    test_segments, test_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20210510_43m"))
+    train_segments, train_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20201218_remote"))
+    test_segments, test_labels = load_segments_labels(ds_path=os.path.join(base_dir, "chestnut_20210510_43m_remote"))
     process_segments_labels(segments=train_segments,
                             labels=train_labels,
-                            home_path=os.path.join(base_dir, "chestnut_20201218_48"),
+                            home_path=os.path.join(base_dir, "chestnut_20201218_48_rgb_remote"),
                             grid_sz=48,
-                            mode="all")
+                            mode="rgb")
     process_segments_labels(segments=test_segments,
                         labels=test_labels,
-                        home_path=os.path.join(base_dir, "chestnut_20210510_43m_48"),
+                        home_path=os.path.join(base_dir, "chestnut_20210510_43m_48_rgb_remote"),
                         grid_sz=48,
-                        mode="all")
+                        mode="rgb")
     
 if __name__ == "__main__":
     main()

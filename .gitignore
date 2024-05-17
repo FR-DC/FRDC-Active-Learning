@@ -1,5 +1,6 @@
 /venv
 /Chestnut_logs
+/Active-Learning_logs
 bounds.csv
 __pycache__/
 /FRDC-ML/

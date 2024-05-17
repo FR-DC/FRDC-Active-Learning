@@ -9,6 +9,7 @@ import torch.nn.parallel
 import torch.optim as optim
 from pathlib import Path
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import StepLR
 
 from dataset.chestnut import get_dataloaders
 import models.wideresnet as models
@@ -21,9 +22,9 @@ from tensorboardX import SummaryWriter
 
 def main(
     *,
-    epochs: int = 50,
-    batch_size: int = 64,
-    lr: float = 0.001,
+    epochs: int = 100,
+    batch_size: int = 128,
+    lr: float = 0.0001,
     train_iteration: int = 256,
     ema_decay: float = 0.999,
     lambda_u: float = 75,
@@ -31,7 +32,9 @@ def main(
     t: float = 0.5,
     device: str = "cuda",
     seed: int = 42,
-    out: Path | str = "../../Chestnut_logs",
+    bestname = "model_best_48",
+    saved_model_path: Path | str = None,
+    out: Path | str = "../../Chestnut_logs/48_ssl_balanced",
 ):
     if not os.path.isdir(out):
         mkdir_p(out)
@@ -56,8 +59,8 @@ def main(
         test_loader,
         classes,
     ) = get_dataloaders(
-        train_dataset_dir="../../chestnut_20201218_48",
-        test_dataset_dir="../../chestnut_20210510_43m_48",
+        train_dataset_dir="../../chestnut_20201218_48_remote",
+        test_dataset_dir="../../chestnut_20210510_43m_48_remote",
         train_lbl_size=0.2,
         train_unl_size=0.6,
         batch_size=batch_size,
@@ -68,6 +71,9 @@ def main(
     print("==> creating WRN-28-2")
 
     model = models.WideResNet(num_classes=9).to(device)
+    if saved_model_path:
+        checkpoint = torch.load(saved_model_path)
+        model.load_state_dict(checkpoint['ema_state_dict'])
     ema_model = deepcopy(model).to(device)
     for param in ema_model.parameters():
         param.detach_()
@@ -81,6 +87,7 @@ def main(
     train_loss_fn = SemiLoss()
     val_loss_fn = nn.CrossEntropyLoss()
     train_optim = optim.Adam(model.parameters(), lr=lr)
+    # train_scheduler = StepLR(train_optim, 15, 0.5)
 
     ema_optim = WeightEMA(model, ema_model, alpha=ema_decay, lr=lr)
 
@@ -106,6 +113,10 @@ def main(
             epochs=epochs,
             sharpen_temp=t,
         )
+
+        # train_scheduler.step()
+        # last_lr = (train_scheduler.get_last_lr())[0]
+        # ema_optim.update_lr(last_lr)
 
         def val_ema(dl: DataLoader):
             return validate(
@@ -144,6 +155,7 @@ def main(
                 'best_acc': best_acc,
                 'optimizer' : train_optim.state_dict()}, 
                 is_best=is_best,
+                bestname=bestname,
                 checkpoint=out)
 
         print(
@@ -159,9 +171,9 @@ def main(
 
     writer.close()
 
-    resume = os.path.join(out, "model_best.pth.tar")
+    resume = os.path.join(out, bestname)
     checkpoint = torch.load(resume)
-    model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint['ema_state_dict'])
     confusion_mat(test_dl=test_loader, out=out, species_map=classes, model=model, device=device)
 
     print("Best acc:")

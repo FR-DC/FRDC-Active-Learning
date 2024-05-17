@@ -21,6 +21,10 @@ class WeightEMA(object):
         for param, ema_param in zip(self.params, self.ema_params):
             param.data.copy_(ema_param.data)
 
+    def update_lr(self, new_lr: float):
+        self.lr = new_lr
+        self.wd = 0.02 * self.lr
+
     def step(self):
         one_minus_alpha = 1.0 - self.alpha
         for param, ema_param in zip(self.params, self.ema_params):

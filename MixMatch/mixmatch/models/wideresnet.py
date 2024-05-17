@@ -171,6 +171,33 @@ class WideResNet(nn.Module):
         out = self.block2(out)
         out = self.block3(out)
         out = self.relu(self.bn1(out))
-        out = F.avg_pool2d(out, 8)
+        out = F.adaptive_avg_pool2d(out, (1, 1))
         out = out.view(-1, self.nChannels)
         return self.fc(out)
+    
+    def final_hidden(self, x):
+        out = self.conv1(x)
+        out = self.block1(out)
+        out = self.block2(out)
+        out = self.block3(out)
+        out = self.relu(self.bn1(out))
+        out = F.adaptive_avg_pool2d(out, (1, 1))
+        out = out.view(-1, self.nChannels)
+        return out
+    
+def freeze_all_layers(model: nn.Module) -> None:
+    """
+    Freezes all layers except for bn and fc layers
+    """
+    model.requires_grad_(False)
+    for m in model.modules():
+        if isinstance(m, nn.Linear):
+            m.requires_grad_(True)
+        elif isinstance(m, nn.BatchNorm2d):
+            m.weight.requires_grad_(True)
+            m.bias.requires_grad_(True)
+
+def unfreeze_all_layers(model: nn.Module) -> None:
+    model.requires_grad_(True)
+
+

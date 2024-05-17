@@ -7,7 +7,7 @@ import torch
 import os
 from typing import Tuple, List
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
 from torchvision.transforms.v2 import (
     RandomHorizontalFlip,
@@ -65,7 +65,7 @@ class ChestnutDataset(Dataset):
         self.targets = np.asarray(self.targets)
         
     def __len__(self) -> int:
-        return self.data.shape[0]
+        return len(self.data)
     
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         img, target = self.data[index], self.targets[index]
@@ -94,11 +94,19 @@ class ChestnutDataset(Dataset):
         self.mean = np.expand_dims(np.mean(self.data, axis=(0,1,2)), axis=(0,1,2))
         self.std = np.expand_dims(np.std(self.data, axis=(0,1,2)), axis=(0,1,2))
 
+    def weight_labels(self):
+        unique, counts = np.unique(self.targets, return_counts=True)
+        self.weights = np.copy(self.targets)
+        for label, count in list(zip(unique, counts)):
+            mask = np.ones(self.targets.size)
+            mask[np.where(self.targets == label)] = 1 / count
+            self.weights = self.weights * mask
+
     # def replace_targets(self, labels: List[int] = None) -> None:
     #     if labels:
     #         for i, label in enumerate(labels):
     #             self.targets[self.targets == label] = i
-    
+        
 
 class ChestnutSubset(ChestnutDataset):
     """
@@ -120,7 +128,7 @@ class ChestnutSubset(ChestnutDataset):
             self.data = self.data[idxs, ...]
             self.targets = self.targets[idxs]
         self.standardize(stats=stats)
-        # self.replace_targets(labels=labels)
+        # self.weight_labels()
 
 
 class ChestnutSubsetKAug(ChestnutDataset):
@@ -147,7 +155,7 @@ class ChestnutSubsetKAug(ChestnutDataset):
             self.data = self.data[idxs, ...]
             self.targets = self.targets[idxs]
         self.standardize(stats=stats)
-        # self.replace_targets(labels=labels)
+        # self.weight_labels()
 
     def __getitem__(self, item):
         img, target = super().__getitem__(item)
@@ -215,7 +223,7 @@ def get_dataloaders(
     #     np.random.shuffle(indices)
     #     train_lbl_ixs.extend(indices[:12])
     #     val_ixs.extend(indices[12:13])
-        # train_unl_ixs.extend(indices[13:])
+    #     train_unl_ixs.extend(indices[13:])
 
     train_lbl_ds = ChestnutSubsetKAug(
         root=train_dataset_dir,
@@ -245,12 +253,19 @@ def get_dataloaders(
     )
 
     train_lbl_dl = DataLoader(
-        train_lbl_ds, shuffle=True, drop_last=True, **dl_args
+        train_lbl_ds, 
+        shuffle=True, 
+        drop_last=True, 
+        # sampler=WeightedRandomSampler(weights=train_lbl_ds.weights, num_samples=len(train_lbl_ds), replacement=True), 
+        **dl_args
     )
     train_unl_dl = DataLoader(
         train_unl_ds, shuffle=True, drop_last=True, **dl_args
     )
-    val_dl = DataLoader(val_ds, shuffle=False, **dl_args)
+    val_dl = DataLoader(val_ds, 
+                        shuffle=False,
+                        # sampler=WeightedRandomSampler(weights=val_ds.weights, num_samples=len(val_ds), replacement=True),  
+                        **dl_args)
     if test_dataset_dir:
     #     test_ixes = []
     #     for idx in range(len(os.listdir(train_dataset_dir))):
@@ -266,7 +281,10 @@ def get_dataloaders(
         print(f"Mean: {train_lbl_ds.mean}")
         print(f"Std: {train_lbl_ds.std}")
 
-        test_dl = DataLoader(test_ds, shuffle=False, **dl_args)
+        test_dl = DataLoader(test_ds, 
+                             shuffle=False, 
+                            #  sampler=WeightedRandomSampler(weights=test_ds.weights, num_samples=len(test_ds), replacement=True), 
+                             **dl_args)
     else:
         test_dl = None
 

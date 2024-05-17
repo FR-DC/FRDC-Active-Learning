@@ -1,4 +1,4 @@
-from typing import Callable, Sequence
+from typing import Callable, Sequence, List
 
 import numpy as np
 import os
@@ -17,6 +17,7 @@ from utils.ema import WeightEMA
 from utils.interleave import interleave
 from utils.loss import SemiLoss
 from sklearn.metrics import confusion_matrix
+from sklearn.decomposition import PCA
 from seaborn import heatmap
 
 
@@ -147,6 +148,54 @@ def train(
         sum([loss * n for loss, n in zip(losses_u, n)]) / sum(n),
     )
 
+def train_sl(
+    *,
+    train_lbl_dl: DataLoader,
+    model: nn.Module,
+    optim: Optimizer,
+    ema_optim: WeightEMA,
+    loss_fn: nn.CrossEntropyLoss,
+    device: str,
+    train_iters: int,
+    mix_beta_alpha: float,
+) -> float:
+    losses = []
+    n = []
+
+    lbl_iter = iter(train_lbl_dl)
+
+    model.train()
+    for batch_idx in tqdm(range(train_iters)):
+        try:
+            (x_lbl,), y_lbl = next(lbl_iter)
+        except StopIteration:
+            lbl_iter = iter(train_lbl_dl)
+            (x_lbl,), y_lbl = next(lbl_iter)
+
+        y_lbl = one_hot(y_lbl.long(), num_classes=9)
+
+        x_lbl = x_lbl.to(device)
+        y_lbl = y_lbl.to(device)
+
+        x_mix, y_mix = mix_up(x_lbl, y_lbl, mix_beta_alpha)
+
+        y_mix_pred = model(x_mix)
+
+        loss_lbl = loss_fn(
+            y_mix_pred,
+            y_mix
+        )
+
+        losses.append(loss_lbl)
+        n.append(x_lbl.size(0))
+
+        optim.zero_grad()
+        loss_lbl.backward()
+        optim.step()
+        ema_optim.step()
+
+    return sum([loss * n for loss, n in zip(losses, n)]) / sum(n)
+
 
 def validate(
     *,
@@ -235,10 +284,36 @@ def confusion_mat(test_dl: DataLoader,
     cm = confusion_matrix(y_trues.cpu().numpy(), y_preds.cpu().numpy())
     np.save(os.path.join(out, "confusion_matrix"), cm)
 
-    plt.figure(figsize = (12,7))
+    plt.figure(figsize = (10,7))
     heatmap(cm, xticklabels=species_map, yticklabels=species_map, annot=True, fmt='g')
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.xticks(rotation=30)
     plt.savefig(os.path.join(out, "heatmap.png"), dpi=400)
     return
+
+def visualize_pca(idxes: np.ndarray, 
+                  preds: np.ndarray,
+                  targets: np.ndarray,
+                  title: str,
+                  out: Path | str,
+                  classes: List[str],
+                  iteration: int):
+
+    pca = PCA(n_components=2)
+    x_new = pca.fit_transform(preds)
+    x, y = x_new.T
+
+    x_max = x[idxes]
+    y_max = y[idxes]
+
+    fig, ax = plt.subplots()
+    cdict = {0: 'cyan', 1: 'blue', 2: 'red', 3:'orange', 4: 'purple', 5: 'green', 6: 'yellow', 7: 'magenta', 8: 'brown', 9: 'pink'}
+    for i, g in enumerate(classes):
+        ix = np.where(targets == i)
+        ax.scatter(x[ix], y[ix], c = cdict[i], label = g, s = 100, alpha=0.2)
+
+    ax.scatter(x_max, y_max, c='black', s=100, alpha=0.7, marker='^')
+    ax.legend(loc='upper left', prop={'size': 6})
+    ax.set_title(title)
+    fig.savefig(os.path.join(out, f"pca_{iteration}"), dpi=400)
